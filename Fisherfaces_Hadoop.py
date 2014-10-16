@@ -866,7 +866,7 @@ if __name__ == "__main__":
         f.create_model(cfg)
         sys.exit(0)
 
-    # A simple cross validation utility.
+    # A simple validation utility.
     test_images = cfg['test_images']
     match_file = cfg.get('match_file', './match.tsv')
     dist_file = cfg.get('dist_file', './dist.tsv')
@@ -881,6 +881,7 @@ if __name__ == "__main__":
     j = 0
     # In our case, we typically use a subset of the training images
     # as the test images.
+    # Read the test images into memory.
     with open(test_images) as fin:
         for line in fin:
             line = line.rstrip()
@@ -891,17 +892,25 @@ if __name__ == "__main__":
             else:
                 img = np.asarray(map(int, toks[2].split(' ')), dtype=np.uint8)
             X.append(img)
+            # Record the label/class of each test image as well.
             y.append(toks[0])
             z.append(toks[1])
             j = j+1
             if j > num_test: break
     sys.stderr.write('Finished reading test images ...')
 
+    # We compute the following statistics:
+    # p1 - 1 if the closest match is a positive match, else 0.
+    # p5 - Percentage of positive matches in the first 5 closest matches.
+    # p10 - Percentage of positive matches in the first 10 closest matches.
+    # These statistics are calculated for each test image, as well as the
+    # overall test.
     counts = {}
     num_images = 0
     total_p1 = 0
     total_p5 = 0
     total_p10 = 0
+    # Compute the number of image in each class of the test images.
     for l in y:
         if not l in counts:
             counts[l] = 0
@@ -909,16 +918,22 @@ if __name__ == "__main__":
 
     fout = open(match_file, 'w')
     fout2 = open(dist_file, 'w')
+
+    # Iterate over the test images and match each against the database.
     for i in range(min(len(X),num_test)):
         num_images += 1
-        if num_images%2 == 0:
+        if num_images%20 == 0:
             sys.stderr.write('Image ' + z[i] + '...\n')
-        predictions = f.match(X[i],15)
         fout.write(str(y[i]) + '\t' + z[i])
         fout2.write(str(y[i]) + '\t' + z[i])
+
+        predictions = f.match(X[i],15)
+
         num_matched = 0
         num_compared = 0
-        count = counts[y[i]]
+
+        count = counts[y[i]]; # Total number of images available for this class.
+
         distances = predictions['distances']
         labels = predictions['labels']
         names = predictions['names']
@@ -932,7 +947,13 @@ if __name__ == "__main__":
             # matches.
             if num_compared == 1: continue
             if num_compared > 11: break
+
+            # The predicted label == test image label. => Match.
             if l == y[i]: num_matched += 1
+
+            # All available images for this label have already been
+            # extracted. A negative result now doesn't matter. So, increment
+            # the number of matches.
             if num_compared > count: num_matched += 1
 
             if num_compared == 2:
