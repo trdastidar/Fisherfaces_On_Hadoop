@@ -243,9 +243,27 @@ To create a model from a training set of images:
 Once the process completes, there will be two main output files in the work
 directory:
 
-- eigenvectors.out: The Fisherfaces eigenvectors, to be used for
-    getting the Fisherfaces representation of any new image.
-- fisherfaces\_db.out: The Fisherfaces DB, to be loaded for lookup.
+* eigenvectors.out: The Fisherfaces eigenvectors, to be used for
+    getting the Fisherfaces representation of any new image. This is an
+    n X (C-1) matrix and each line contains one row of the matrix.
+* fisherfaces\_db.out: The Fisherfaces DB, to be loaded for lookup. Each
+    line contains the Fisherfaces representation of the corresponding input
+    image.
+
+The numerical data parts in both files are by default base64 encoded numpy
+arrays (data type numpy.float64) and can be decoded in Python as follows:
+
+    #!/usr/bin/env python
+    import numpy as np
+    import base64
+
+    with open(data_file) as fin:
+        for line in fin:
+            line = line.rstrip()
+            b = base64.decodestring(line)
+            a = np.frombuffer(b, dtype=np.float64)
+            ...
+
 
 Fisherfaces\_Hadoop.py also contains a simple lookup and matching code at
 the end.
