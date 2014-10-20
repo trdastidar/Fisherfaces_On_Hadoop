@@ -264,6 +264,10 @@ arrays (data type numpy.float64) and can be decoded in Python as follows:
             a = np.frombuffer(b, dtype=np.float64)
             ...
 
+It is also possible (though not recommended) to use plain ascii text for
+I/O. Set the variable 'format' to '1' in the configuration file and make
+sure that in the input file, the image pixel values are written out
+separated by a single blank space (' ') between values.
 
 Fisherfaces\_Hadoop.py also contains a simple lookup and matching code at
 the end.

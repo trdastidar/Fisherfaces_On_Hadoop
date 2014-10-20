@@ -165,7 +165,6 @@ class Fisherfaces:
         try:
             os.makedirs(self.local_path)
         except:
-#            print 'Directory ' + self.local_path + ' already exists'
             pass
 
         assert 'input' in cfg, \
@@ -269,6 +268,8 @@ class Fisherfaces:
         self.infile = cfg['input']
         self.delim = '\t'
         self.total_tag = cfg.get('total_tag', '__total__')
+        self.fmt = cfg.get('format', '0')
+        self.d_format = int(self.fmt)
         self.__fisherfaces_out = cfg.get('database', self.local_path + '/fisherfaces_db.out')
         self.__eigenvectors_out = cfg.get('eigenvectors', self.local_path + '/eigenvectors.out')
 
@@ -303,15 +304,14 @@ class Fisherfaces:
         # distance with the projected image.
         distances = []
         for i in range(len(self.__features)):
-#            distances.append(euclidean(xp, self.__features[i]))
-            distances.append(np.linalg.norm(xp-self.__features[i]))
+            distances.append(euclidean(xp, self.__features[i]))
 
         # Sort the distances in ascending order and select top N
         distances = np.asarray(distances)
         idx = np.argsort(distances)
         sorted_distances = distances[idx]
 
-        sorted_distances = sorted_distances[0:num_matches]
+        sorted_distances = sorted_distances[0:num_matches].tolist()
         predicted_labels = []
         predicted_names = []
         for i in range(num_matches):
