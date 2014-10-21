@@ -187,6 +187,7 @@ class Fisherfaces:
         self.total_tag = cfg.get('total_tag', '__total__')
         self.fmt = cfg.get('format', '0')
         self.d_format = int(self.fmt)
+        self.num_splits = int(cfg.get('num_splits', '4'))
 
         self.logfile = cfg.get('logfile', 'fisherfaces.log')
 
@@ -783,11 +784,12 @@ class Fisherfaces:
         output_dir = self.hdfs_path + '/fisherfaces_db'
 
         cmd = self.hadoop + ' jar ' + self.hadoop_streaming + ' \\\n' \
-            + '-Dmapred.reduce.tasks=0 \\\n' \
+            + '-Dmapred.reduce.tasks=' + str(self.num_splits) + ' \\\n' \
             + '-files \'' + self.hadoop_nn + hdfs_eigen + '\' \\\n' \
             + '-file ' + self.script_path + ' \\\n' \
             + '-input ' + self.input_path + ' \\\n' \
             + '-output ' + output_dir + ' \\\n' \
+            + '-reducer \'cat\' \\\n' \
             + '-mapper \'python ' + self.script_name + ' project ' + eigen_local + ' int ' + self.fmt + '\' \\\n' \
             + ' > ' + self.local_path + '/lda_project.log 2>&1'
         self.__execute_cmd(cmd)

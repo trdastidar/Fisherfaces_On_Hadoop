@@ -98,7 +98,7 @@ However, when we try to parallelize the process, we are faced with
 some problems:
 
 * In our case N can potentially be far more than n (which is the motivation behind parallelizing the algorithm in the first place)
-* If the number of classes (C) is large, computing C eigenvectors using the map-reduce implementation of SVD (the Mahout library offers such an implementation) can take a very long time as it is an iterative algorithm.
+* Computing N - C eigenvectors using the map-reduce implementation of SVD (the Mahout library offers such an implementation) can take a very long time as it is an iterative algorithm.
 
 In our case, n can be in the order of a few thousands (typically less than
 10,000-12,000 if the images are suitably resized). Our experiments showed
@@ -112,7 +112,7 @@ Hence, we adopt a different approach.
 * Compute the covariance matrix (this can be parallelized very easily)
 * Compute the eigenfaces from the covariance matrix on a single node.
 
-Multiplying a matrix with its inverse is a simpler problem than matrix
+Multiplying a matrix with its transpose is a simpler problem than matrix
 multiplication and can be easily ported to the Map-Reduce framework. The
 map phase computes a n X n matrix by multiplying each row with its
 transpose and accumulating the sum. Once this is over, we sum the matrices
@@ -135,7 +135,8 @@ Given an image x, its eigenface representation is given by
 y = (x - m) * E, where m is the 'mean image' computed in step 1 above.
 Note that the quantity x - m is already computed in step 2. Thus, in this
 stage, we simply multiply each row of U by E in a map-only job. E is passed
-to the mappers via distributed cache.
+to the mappers via distributed cache. Let the resultant matrix (where each
+row is a PCA transformed image) be denoted by Y.
 
 This step concludes the eigenfaces computation, which is the first phase of
 the Fisherfaces algorithm.
@@ -153,10 +154,10 @@ The between-class-scatter matrix S\_b is defined as follows:
     \begin{equation}
     S_b = \sum_{i=1}^{C} N_i(m_i - m)^T(m_i - m)
     \end{equation}
-where m\_i is the mean for class i.
+where m\_i is the mean for class i and m is the overall mean.
 
-Each m is of dimension K (= N - C), and this sum is computed as a single
-machine operation. S\_b is a K X K matrix.
+Each mean vector is of dimension K (= N - C), and this sum is computed as a
+single machine operation. S\_b is a K X K matrix.
 
 #### Step 8: Compute the within class scatter ####
 
@@ -164,13 +165,17 @@ The within-class-scatter matrix S\_w is defined as follows:
 
     <LaTeX> :-)
     \begin{equation}
-    S_w = \sum_{i=1}^{C} \sum_{x_k \in C_i} (x_k - m_i)^T(x_k - m_i)
+    S_w = \sum_{i=1}^{C} \sum_{y_k \in C_i} (x_k - m_i)^T(x_k - m_i)
     \end{equation}
 
-Here the *x* is an input image. This operation is similar to multiplying a
-matrix with its inverse, and thus we reuse the same code as in step 3 to
-compute S\_w. We use the input X matrix, subtract the mean of the
-corresponding class from each row, and then multiply with its transpose.
+Here the *y*'s are PCA-transformed (step 5) images of dimension 1 X K.
+This operation is similar to multiplying a
+matrix with its transpose, and thus we reuse the same code as in step 3 to
+compute S\_w. We use the Y (PCA transformed image) matrix, subtract the mean
+of the corresponding class from each row, and then multiply with its
+transpose.
+
+S\_w is also a K X K matrix.
 
 #### Step 9: Compute the LDA ####
 
