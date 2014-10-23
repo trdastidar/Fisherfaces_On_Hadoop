@@ -70,6 +70,21 @@ class Fisherfaces:
     - hadoop_home: The installation directory of hadoop. The 'hadoop'
         executable should be in the bin/ directory under this directory.
     - hadoop_streaming: The path to the hadoop streaming jar file
+    - k1: Number of eigenvectors to choose in the PCA stage. If not
+        specified, taken as min(N-C, 2000)
+    - k2: Number of eigenvectors to choose in the LDA stage. If not
+        specified, taken as min(C-1, 1000)
+    - 'hadoop_nn': The Hadoop name node URI. To be used to generate the
+        distributed cache location. If not specified, defaults to
+        'hdfs://localhost:9000/'
+    - 'num_splits': The number of splits to be generated for the final
+        Fisherfaces DB. Defaults to '4'.
+    - 'script': Name of the auxillary script for running the Hadoop
+        streaming jobs. Defaults to 'Hadoop_Functions.py' in the same
+        directory as the main script.
+    - 'format': '0' indicates base64 encoded I/O (recommended) and any
+        other value indicates ascii I/O. Defaults to '0'.
+
 
     Requires an auxillary Python script to run the Hadoop streaming
     jobs. The script is in the same directory - Hadoop_Functions.py
@@ -188,6 +203,8 @@ class Fisherfaces:
         self.fmt = cfg.get('format', '0')
         self.d_format = int(self.fmt)
         self.num_splits = int(cfg.get('num_splits', '4'))
+        self.k1 = int(cfg.get('k1', '0'))
+        self.k2 = int(cfg.get('k2', '0'))
 
         self.logfile = cfg.get('logfile', 'fisherfaces.log')
 
@@ -562,15 +579,16 @@ class Fisherfaces:
 
         # Select the largest N-C (C == number of classes) eigenvalues and
         # their corresponding eigenvectors as the eigenfaces.
-        self.N_c = self.num_images - self.num_classes
-        self.logger.debug('Sorting eigenvalues and selecting top ' + str(self.N_c) + ' ...')
+        if self.k1 == 0:
+            self.k1 = min(self.num_images - self.num_classes, 2000)
+        self.logger.debug('Sorting eigenvalues and selecting top ' + str(self.k1) + ' ...')
         idx = np.argsort(-self.__pca_eigenvalues)
 
         self.__pca_eigenvalues, self.__pca_eigenvectors = \
             self.__pca_eigenvalues[idx], self.__pca_eigenvectors[:,idx]
 
-        self.__pca_eigenvalues = self.__pca_eigenvalues[0:self.N_c].copy()
-        self.__pca_eigenvectors = self.__pca_eigenvectors[0:,0:self.N_c].copy()
+        self.__pca_eigenvalues = self.__pca_eigenvalues[0:self.k1].copy()
+        self.__pca_eigenvectors = self.__pca_eigenvectors[0:,0:self.k1].copy()
 
         # Write the eigenvalues and eigenvectors (reduced dimension)
         # into a file for later use.
@@ -734,10 +752,11 @@ class Fisherfaces:
         self.__lda_eigenvalues, self.__lda_eigenvectors = \
             self.__lda_eigenvalues[idx], self.__lda_eigenvectors[:,idx]
 
-        C = self.num_classes-1
-        self.__lda_eigenvalues = np.array(self.__lda_eigenvalues[0:C].real, \
+        if self.k2 == 0:
+            self.k2 = min(self.num_classes - 1, 1000)
+        self.__lda_eigenvalues = np.array(self.__lda_eigenvalues[0:self.k2].real, \
                 dtype=np.float64, copy=True)
-        self.__lda_eigenvectors = np.matrix(self.__lda_eigenvectors[0:,0:C].real, \
+        self.__lda_eigenvectors = np.matrix(self.__lda_eigenvectors[0:,0:self.k2].real, \
                 dtype=np.float64, copy=True)
         self.logger.debug('Finished computing and sorting eigenvalues and eigenvectors ...')
 
@@ -868,7 +887,8 @@ if __name__ == "__main__":
         f.create_model(cfg)
         sys.exit(0)
 
-    # A simple validation utility.
+    # A simple validation utility. This is actually too simple to be
+    # really useful. So, please do _not_ use it :-)
     test_images = cfg['test_images']
     match_file = cfg.get('match_file', './match.tsv')
     dist_file = cfg.get('dist_file', './dist.tsv')
@@ -956,7 +976,7 @@ if __name__ == "__main__":
             # All available images for this label have already been
             # extracted. A negative result now doesn't matter. So, increment
             # the number of matches.
-            if num_compared > count: num_matched += 1
+            if num_matched >= count: num_matched += 1
 
             if num_compared == 2:
                 fout.write('\t' + str(num_matched))

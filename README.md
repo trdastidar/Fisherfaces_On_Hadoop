@@ -98,7 +98,7 @@ However, when we try to parallelize the process, we are faced with
 some problems:
 
 * In our case N can potentially be far more than n (which is the motivation behind parallelizing the algorithm in the first place)
-* Computing N - C eigenvectors using the map-reduce implementation of SVD (the Mahout library offers such an implementation) can take a very long time as it is an iterative algorithm.
+* Computing the largest K eigenvectors using the map-reduce implementation of SVD (the Mahout library offers such an implementation) can take a very long time as it is an iterative algorithm.
 
 In our case, n can be in the order of a few thousands (typically less than
 10,000-12,000 if the images are suitably resized). Our experiments showed
@@ -124,10 +124,20 @@ illustrates this process.
 
 This step is done on a single node. We compute the eigenvalues and
 eigenvectors of the S matrix. We then sort the eigenvalues in descending
-order and select the K = N - C largest eigenvalues and their corresponding
+order and select the K1 largest eigenvalues and their corresponding
 eigenvectors. Let them be denoted by e (eigenvalues) and E (eigenvectors)
-respectively. E is an n X K matrix (i.e. each column is an eigenvector).
+respectively. E is an n X K1 matrix (i.e. each column is an eigenvector).
 These eigenvectors are also called eigenfaces.
+
+For a pure Eigenfaces implementation (i.e. without the LDA stage),
+a small number of eigenvectors (typically < 100) are sufficient for
+face detection. However, in case of Fisherfaces, usually a larger
+number of eigenvectors are used. The original paper [Belheumer et al. 1997]
+takes K1 = N - C. However, in case of large N,
+N - C can actually be larger than
+n! We experimented with this number, and found that it can be reduced.
+We have kept this parameter (K1), as configurable. Please see the
+section on '*Choosing K1 and K2*' for details.
 
 #### Step 5: Compute the eigenfaces representation of each image ####
 
@@ -136,9 +146,9 @@ y = (x - m) * E, where m is the 'mean image' computed in step 1 above.
 Note that the quantity x - m is already computed in step 2. Thus, in this
 stage, we simply multiply each row of U by E in a map-only job. E is passed
 to the mappers via distributed cache. Let the resultant matrix (where each
-row is a PCA transformed image) be denoted by Y.
+row is a PCA transformed image) be denoted by Y. Y is a N X K1 matrix.
 
-This step concludes the eigenfaces computation, which is the first phase of
+This step concludes the Eigenfaces computation, which is the first phase of
 the Fisherfaces algorithm.
 
 #### Step 6: Compute the mean for the eigenfaces representation of each image ####
@@ -156,8 +166,12 @@ The between-class-scatter matrix S\_b is defined as follows:
     \end{equation}
 where m\_i is the mean for class i and m is the overall mean.
 
-Each mean vector is of dimension K (= N - C), and this sum is computed as a
-single machine operation. S\_b is a K X K matrix.
+Each mean vector is of dimension K1, and this sum is computed as a
+single machine operation. However, in case of large C, we can choose to
+run this as a map-reduce job as well. The code used in step 5 can be
+reused for this. Feel free to modify this.
+
+S\_b is a K1 X K1 matrix.
 
 #### Step 8: Compute the within class scatter ####
 
@@ -175,7 +189,7 @@ compute S\_w. We use the Y (PCA transformed image) matrix, subtract the mean
 of the corresponding class from each row, and then multiply with its
 transpose.
 
-S\_w is also a K X K matrix.
+S\_w is also a K1 X K1 matrix.
 
 #### Step 9: Compute the LDA ####
 
@@ -189,22 +203,23 @@ the LDA eigenvalues and eigenvectors as follows:
     T_2 = T_1 * S_b
     evalues, evectors = np.linalg.eig(T_2)
 
-S\_w and S\_b are K X K matrices. For large N, K (= N - C) can be large.
-Using a smaller K results in sub-optimal matching accuracy. Thus,
-this step can be a potential bottleneck in the whole process since it
-is performed on a single machine. We are actively exploring efficient
-ways to parallelize this process. The saving grace is that both S\_w and
-S\_b are symmetric matrices, and thus these computations are less expensive
-than in the general case.
+S\_w and S\_b are K1 X K1 matrices. The original paper takes
+K1 = N - C, and in case of large N, this step can become a bottleneck
+since it is performed on a single machine. However, our experiments show
+that using a smaller K1 is also possible. This is discussed in detail
+later.
 
 As in the PCA computation stage, we sort the eigenvalues in descending order
-and select the top C-1 eigenvalues and their corresponding eigenvectors.
+and select the top K2 eigenvalues and their corresponding eigenvectors.
+
+K2 is taken as C - 1 in the original paper. However, we have found that
+a much smaller K2 can be used. This parameter is also kept as configurable.
 
 #### Step 10: Compute the Fisherfaces eigenvectors ####
 
-The PCA eigenvectors (n X K) were computed in step 4 and the LDA
-eigenvectors (K X (C-1)) were computed in step 9. The Fisherfaces
-eigenvectors matrix is the product of these two and has dimension n X (C-1).
+The PCA eigenvectors (n X K1) were computed in step 4 and the LDA
+eigenvectors (K1 X K2) were computed in step 9. The Fisherfaces
+eigenvectors matrix is the product of these two and has dimension n X K2.
 
 This operation is done in a single node and the results are saved for later
 use.
@@ -216,6 +231,20 @@ on the input images (the process is the same as in step 5) with the
 Fisherfaces eigenvectors passed via distributed cache.
 
 That's all, folks!
+
+## Choosing K1 and K2 ##
+
+As mentioned earlier the original paper takes K1 (number of PCA
+eigenvectors to choose) as N - C and K2 (number of LDA eigenvectors to
+choose) as C - 1. We also mentioned that for large N, this can lead to
+several problems (N - C can be potentially larger than n!).
+
+Our experiments showed that reducing K1, without reducing K2, leads to
+sub optimal matching accuracy. However, if both are reduced simultaneously,
+the accuracy goes up. As of now, we do not have an empirical formula for
+choosing K1 and K2. But K1 in the range of 1000-1500 and K2 in the range of
+50-300 worked very well. Please feel free to experiment with these, and 
+any contribution towards a formula for selecting K1 and K2 is most welcome!.
 
 ## Sample usage ##
 
@@ -233,6 +262,16 @@ To run the algorithm, you first need to create a configuration file in the JSON 
 * 'input': The file containing the input images. This file will be copied to the HDFS. *TODO*: Make it possible to directly specify an HDFS file.
 * 'local\_path': The local work directory where all temporary/intermediate results and log files will be stored.
 * 'hdfs\_path': The HDFS work directory path. _Caution_: This directory will be *deleted* and recreated before the process starts, so make sure this path either does not exist or is empty.
+
+Optional parameters:
+* 'hadoop\_nn': The Hadoop name node URI. To be used to generate the distributed cache location. If not specified, defaults to 'hdfs://localhost:9000/'
+* 'k1': The number of eigenvectors to choose in the PCA stage. If not specified, then k1 will be taken as min((N-C), 2000).
+* 'k2': The number of eigenvectors to choose in the LDA stage. If not specified, then k1 will be taken as min(C-1), 1000).
+* 'num\_splits': The number of splits to be generated for the final Fisherfaces DB. Defaults to '4'.
+
+'Use at your own risk' parameters:
+* 'script': Name of the auxillary script for running the Hadoop streaming jobs. Defaults to 'Hadoop\_Functions.py' in the same directory as the main script.
+* 'format': '0' indicates base64 encoded I/O (recommended) and any other value indicates ascii I/O. Defaults to '0'.
 
 To create a model from a training set of images:
 
