@@ -214,7 +214,17 @@ class Fisherfaces:
 
         self.logger = logging.getLogger("FisherFaces_Hadoop");
 
-        self.logger.info('Successfully initialized Fisherfaces object')
+        self.logger.info('Successfully initialized Fisherfaces object with following parameters:')
+        self.logger.info('infile           : ' + self.infile)
+        self.logger.info('hdfs_path        : ' + self.hdfs_path)
+        self.logger.info('hadoop path      : ' + self.hadoop)
+        self.logger.info('hadoop streaming : ' + self.hadoop_streaming)
+        self.logger.info('hadoop name node : ' + self.hadoop_nn)
+        self.logger.info('hadoop script    : ' + self.script_path)
+        self.logger.info('k1               : ' + str(self.k1))
+        self.logger.info('k2               : ' + str(self.k2))
+        self.logger.info('num_splits       : ' + str(self.num_splits))
+        self.logger.info('data format      : ' + self.fmt)
 
         # Start the fisherfaces algorithm. The first stage is to compute
         # the PCA.
@@ -347,7 +357,7 @@ class Fisherfaces:
         Projects an input image to a lower dimension by multiplying with
         the eigenvector matrix.
         '''
-        return np.dot(self.__eigenvectors, x.reshape(-1,1))
+        return np.dot(x, self.__eigenvectors)
 
     def __execute_cmd(self, cmd, force_fail=1):
         '''
@@ -836,7 +846,6 @@ class Fisherfaces:
                 self.__eigenvectors.append(row)
 
         self.__eigenvectors = np.asmatrix(self.__eigenvectors, dtype=np.float64)
-        self.__eigenvectors = self.__eigenvectors.T
         self.logger.debug('Eigenvectors shape = ' + str(self.__eigenvectors.shape))
         self.logger.info('Finished reading eigenvectors ...')
 
@@ -976,7 +985,7 @@ if __name__ == "__main__":
             # All available images for this label have already been
             # extracted. A negative result now doesn't matter. So, increment
             # the number of matches.
-            if num_matched >= count: num_matched += 1
+            elif num_matched >= count-1: num_matched += 1
 
             if num_compared == 2:
                 fout.write('\t' + str(num_matched))
