@@ -228,6 +228,10 @@ The distribution (so far) consists of three main Python files
 
 The last part of the Fisherface\_Hadoop.py file shows some sample usage.
 
+There is also an example search server - Server.py - which implements a
+simple HTTP based server for querying face images. Please see the file
+Server.py for further details.
+
 To run the algorithm, you first need to create a configuration file in the JSON format. A sample configuration file (example\_config.py) is provided in this distribution. The important elements in the configuration file are as follows:
 
 * 'input': The file containing the input images. This file will be copied to the HDFS. *TODO*: Make it possible to directly specify an HDFS file.
